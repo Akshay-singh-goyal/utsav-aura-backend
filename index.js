@@ -10,7 +10,7 @@ import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import http from "http";
 import { Server } from "socket.io";
-import fetch from 'node-fetch'; // Make sure node-fetch is installed
+import fetch from 'node-fetch';
 
 // --- Load environment variables ---
 dotenv.config();
@@ -35,11 +35,15 @@ import packageRoutes from "./Routes/packageRoutes.js";
 import queryRoutes from "./Routes/queryRoutes.js";
 import profileRoutes from "./Routes/profileRoutes.js";
 
-
 // --- App & Config ---
 const app = express();
 const PORT = process.env.PORT || 5000;
-const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/SKART';
+const MONGO_URI = process.env.MONGO_URI;
+
+if (!MONGO_URI) {
+  console.error("❌ MONGO_URI not defined in environment variables!");
+  process.exit(1);
+}
 
 // --- Middleware ---
 app.use(helmet());
@@ -128,20 +132,18 @@ app.use((err, req, res, next) => {
 const server = http.createServer(app);
 export const io = new Server(server, { cors: { origin: process.env.FRONTEND_ORIGIN || "http://localhost:3000" } });
 
-// Socket.IO connection
 io.on("connection", (socket) => {
   console.log("Socket connected:", socket.id);
   socket.on("disconnect", () => console.log("Socket disconnected:", socket.id));
 });
 
-// Emit order updates helper
 export const emitOrderUpdate = (order) => io.emit("orderUpdated", order);
 
 // --- MongoDB connection + server start ---
-mongoose.connect(MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
+mongoose.connect(MONGO_URI)
   .then(() => {
     console.log('MongoDB connected ✅');
-    app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+    server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
   })
   .catch(err => {
     console.error('MongoDB connection failed ❌', err);

@@ -1,14 +1,13 @@
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
 
-const mongo_url = process.env.MONGO_CONN;
-if (!mongo_url) {
-  console.error('❌ MONGO_CONN is not defined in .env');
+const mongoURL = process.env.MONGO_URI;
+
+if (!mongoURL) {
+  console.error("❌ MONGO_URI is not defined");
   process.exit(1);
 }
 
-
-mongoose.connect(process.env.MONGO_URI)
+mongoose
+  .connect(mongoURL)
   .then(() => console.log("MongoDB connected ✅"))
-  .catch(err => console.log("MongoDB connection failed ❌", err));
-
-
+  .catch((err) => console.log("MongoDB connection failed ❌", err));
