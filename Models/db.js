@@ -6,9 +6,9 @@ if (!mongo_url) {
   process.exit(1);
 }
 
-mongoose.connect(mongo_url, { useNewUrlParser: true, useUnifiedTopology: true })
-  .then(() => console.log('✅ MongoDB Connected'))
-  .catch((err) => {
-    console.error('❌ MongoDB Connection Error:', err.message);
-    process.exit(1);
-  });
+
+mongoose.connect(process.env.MONGO_URI)
+  .then(() => console.log("MongoDB connected ✅"))
+  .catch(err => console.log("MongoDB connection failed ❌", err));
+
+
