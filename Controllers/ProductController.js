@@ -1,6 +1,6 @@
 // controllers/productController.js
 import Product from "../Models/Product.js";
-import cloudinary from "../cloudinary.js"; // your cloudinary config file
+import cloudinary from "../cloudinary.js"; // Cloudinary config
 import fs from "fs";
 
 // ✅ Add a new product
@@ -13,23 +13,19 @@ export const addProduct = async (req, res) => {
     }
 
     let imageUrl = null;
-
     if (req.file) {
-      // Upload image to Cloudinary
       const result = await cloudinary.uploader.upload(req.file.path, { folder: "products" });
       imageUrl = result.secure_url;
-
-      // Delete temp file from local
       fs.unlinkSync(req.file.path);
     }
 
     const product = new Product({
       name,
-      originalPrice,
-      discountPrice,
+      originalPrice: Number(originalPrice),
+      discountPrice: Number(discountPrice) || Number(originalPrice),
       description,
       category,
-      quantity,
+      quantity: Number(quantity) || 0,
       color,
       soldBy,
       image: imageUrl,
@@ -43,18 +39,19 @@ export const addProduct = async (req, res) => {
   }
 };
 
-// ✅ Update product
+// ✅ Update a product
 export const updateProduct = async (req, res) => {
   try {
     const { id } = req.params;
     const updates = { ...req.body };
 
+    if (updates.originalPrice) updates.originalPrice = Number(updates.originalPrice);
+    if (updates.discountPrice) updates.discountPrice = Number(updates.discountPrice);
+    if (updates.quantity) updates.quantity = Number(updates.quantity);
+
     if (req.file) {
-      // Upload new image to Cloudinary
       const result = await cloudinary.uploader.upload(req.file.path, { folder: "products" });
       updates.image = result.secure_url;
-
-      // Delete temp file from local
       fs.unlinkSync(req.file.path);
     }
 
