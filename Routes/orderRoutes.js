@@ -6,7 +6,7 @@ import cors from "cors";
 const router = express.Router();
 
 // =========================
-// CORS setup for this router
+// CORS setup
 // =========================
 const allowedOrigins = [
   "http://localhost:3000",
@@ -15,11 +15,9 @@ const allowedOrigins = [
 
 router.use(
   cors({
-    origin: function (origin, callback) {
-      if (!origin) return callback(null, true);
-      if (!allowedOrigins.includes(origin)) {
-        return callback(new Error("Not allowed by CORS"));
-      }
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true); // allow non-browser requests
+      if (!allowedOrigins.includes(origin)) return callback(new Error("Not allowed by CORS"));
       return callback(null, true);
     },
     methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
@@ -28,7 +26,6 @@ router.use(
   })
 );
 
-// Handle OPTIONS preflight
 router.options("*", cors());
 
 // =========================
@@ -38,12 +35,14 @@ router.post("/create", async (req, res) => {
   try {
     const { userId, items, shipping, paymentMethod, total, note, upiDetails } = req.body;
 
+    // Validation
     if (!userId) return res.status(400).json({ error: "User ID is required" });
     if (!items || items.length === 0) return res.status(400).json({ error: "Cart items are required" });
     if (!shipping) return res.status(400).json({ error: "Shipping info is required" });
     if (!paymentMethod) return res.status(400).json({ error: "Payment method is required" });
     if (!total) return res.status(400).json({ error: "Total amount is required" });
 
+    // Safe UPI details
     const safeUpiDetails = paymentMethod === "upi"
       ? {
           txnId: upiDetails?.txnId || "",
@@ -74,7 +73,7 @@ router.post("/create", async (req, res) => {
 
     await order.save();
 
-    // Emit via Socket.IO if attached
+    // Emit real-time update via Socket.IO if available
     if (req.io) req.io.emit("orderUpdated", order);
 
     res.status(201).json(order);
@@ -119,16 +118,28 @@ router.get("/user/:userId", async (req, res) => {
 });
 
 // =========================
-// UPDATE ORDER STATUS
+// UPDATE ORDER STATUS / UPI DETAILS
 // =========================
 router.patch("/status/:id", async (req, res) => {
   try {
-    const { status } = req.body;
-    if (!status) return res.status(400).json({ error: "Status is required" });
+    const { status, upiDetails } = req.body;
+
+    if (!status && !upiDetails)
+      return res.status(400).json({ error: "Status or UPI details are required" });
+
+    const updateData = {};
+    if (status) updateData.status = status;
+    if (upiDetails) {
+      updateData.upiDetails = {
+        txnId: upiDetails?.txnId || "",
+        ownerName: upiDetails?.ownerName || "",
+        extra: upiDetails?.extra || "",
+      };
+    }
 
     const updatedOrder = await Order.findByIdAndUpdate(
       req.params.id,
-      { status },
+      updateData,
       { new: true }
     ).populate("userId", "name email");
 
@@ -138,7 +149,7 @@ router.patch("/status/:id", async (req, res) => {
 
     res.status(200).json(updatedOrder);
   } catch (err) {
-    console.error("Update order status error:", err);
+    console.error("Update order error:", err);
     res.status(500).json({ error: err.message });
   }
 });
