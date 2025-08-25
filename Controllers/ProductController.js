@@ -1,31 +1,38 @@
+// controllers/productController.js
 import Product from "../Models/Product.js";
-import cloudinary from "../cloudinary.js"; // Cloudinary config
+import cloudinary from "../cloudinary.js"; // your cloudinary config file
 import fs from "fs";
 
 // ✅ Add a new product
 export const addProduct = async (req, res) => {
   try {
-    console.log("REQ.BODY:", req.body);
-    console.log("REQ.FILE:", req.file);
+    const { name, originalPrice, discountPrice, description, category, quantity, color, soldBy } = req.body;
 
-    const { name, description, price, category } = req.body;
-
-    if (!req.file || !name || !description || !price || !category) {
-      return res.status(400).json({ error: "All fields including image and category are required" });
+    if (!name || !originalPrice || !category) {
+      return res.status(400).json({ error: "Name, originalPrice, and category are required" });
     }
 
-    // Upload image to Cloudinary
-    const result = await cloudinary.uploader.upload(req.file.path, { folder: "products" });
+    let imageUrl = null;
 
-    // Delete local file
-    fs.unlinkSync(req.file.path);
+    if (req.file) {
+      // Upload image to Cloudinary
+      const result = await cloudinary.uploader.upload(req.file.path, { folder: "products" });
+      imageUrl = result.secure_url;
+
+      // Delete temp file from local
+      fs.unlinkSync(req.file.path);
+    }
 
     const product = new Product({
       name,
+      originalPrice,
+      discountPrice,
       description,
-      price,
       category,
-      image: result.secure_url, // Cloudinary URL
+      quantity,
+      color,
+      soldBy,
+      image: imageUrl,
     });
 
     await product.save();
@@ -39,17 +46,19 @@ export const addProduct = async (req, res) => {
 // ✅ Update product
 export const updateProduct = async (req, res) => {
   try {
-    const { name, description, price, category } = req.body;
-    const updateData = { name, description, price, category };
+    const { id } = req.params;
+    const updates = { ...req.body };
 
     if (req.file) {
       // Upload new image to Cloudinary
       const result = await cloudinary.uploader.upload(req.file.path, { folder: "products" });
-      fs.unlinkSync(req.file.path); // Delete local file
-      updateData.image = result.secure_url;
+      updates.image = result.secure_url;
+
+      // Delete temp file from local
+      fs.unlinkSync(req.file.path);
     }
 
-    const updated = await Product.findByIdAndUpdate(req.params.id, updateData, { new: true });
+    const updated = await Product.findByIdAndUpdate(id, updates, { new: true });
     if (!updated) return res.status(404).json({ error: "Product not found" });
 
     res.json(updated);
@@ -62,7 +71,7 @@ export const updateProduct = async (req, res) => {
 // ✅ Get all products
 export const getProducts = async (req, res) => {
   try {
-    const products = await Product.find();
+    const products = await Product.find().sort({ createdAt: -1 });
     res.json(products);
   } catch (err) {
     console.error("Get products error:", err);

@@ -1,12 +1,18 @@
-// Models/Product.js
 import mongoose from "mongoose";
 
-const ProductSchema = new mongoose.Schema({
-  name: { type: String, required: true },
-  description: { type: String, required: true },
-  price: { type: Number, required: true },
-  image: { type: String, required: true },
-  category: { type: String, required: true }, // <-- STRING instead of ObjectId
-});
+const productSchema = new mongoose.Schema(
+  {
+    name: { type: String, required: true },
+    originalPrice: { type: Number, required: true }, // MRP
+    discountPrice: { type: Number, required: true }, // Final Price
+    description: { type: String, required: true },
+    category: { type: String, required: true },
+    quantity: { type: Number, default: 0 },
+    color: { type: String },
+    soldBy: { type: String },
+    image: { type: String }, // uploaded path / URL
+  },
+  { timestamps: true }
+);
 
-export default mongoose.model("Product", ProductSchema);
+export default mongoose.model("Product", productSchema);
