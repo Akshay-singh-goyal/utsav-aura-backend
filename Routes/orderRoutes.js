@@ -1,26 +1,49 @@
 import express from "express";
 import Order from "../Models/Order.js";
 import { v4 as uuidv4 } from "uuid";
+import cors from "cors";
 
 const router = express.Router();
 
-/**
- * =========================
- * CREATE ORDER
- * =========================
- */
+// =========================
+// CORS setup for this router
+// =========================
+const allowedOrigins = [
+  "http://localhost:3000",
+  "https://utsav-aura.vercel.app"
+];
+
+router.use(
+  cors({
+    origin: function (origin, callback) {
+      if (!origin) return callback(null, true);
+      if (!allowedOrigins.includes(origin)) {
+        return callback(new Error("Not allowed by CORS"));
+      }
+      return callback(null, true);
+    },
+    methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: true,
+  })
+);
+
+// Handle OPTIONS preflight
+router.options("*", cors());
+
+// =========================
+// CREATE ORDER
+// =========================
 router.post("/create", async (req, res) => {
   try {
     const { userId, items, shipping, paymentMethod, total, note, upiDetails } = req.body;
 
-    // Validation
     if (!userId) return res.status(400).json({ error: "User ID is required" });
     if (!items || items.length === 0) return res.status(400).json({ error: "Cart items are required" });
     if (!shipping) return res.status(400).json({ error: "Shipping info is required" });
     if (!paymentMethod) return res.status(400).json({ error: "Payment method is required" });
     if (!total) return res.status(400).json({ error: "Total amount is required" });
 
-    // Handle UPI safely
     const safeUpiDetails = paymentMethod === "upi"
       ? {
           txnId: upiDetails?.txnId || "",
@@ -29,7 +52,6 @@ router.post("/create", async (req, res) => {
         }
       : {};
 
-    // Create new order
     const order = new Order({
       orderId: uuidv4(),
       userId,
@@ -52,7 +74,7 @@ router.post("/create", async (req, res) => {
 
     await order.save();
 
-    // Emit live update via Socket.IO if available
+    // Emit via Socket.IO if attached
     if (req.io) req.io.emit("orderUpdated", order);
 
     res.status(201).json(order);
@@ -62,11 +84,9 @@ router.post("/create", async (req, res) => {
   }
 });
 
-/**
- * =========================
- * GET ALL ORDERS (ADMIN)
- * =========================
- */
+// =========================
+// GET ALL ORDERS (ADMIN)
+// =========================
 router.get("/all", async (req, res) => {
   try {
     const orders = await Order.find()
@@ -79,11 +99,9 @@ router.get("/all", async (req, res) => {
   }
 });
 
-/**
- * =========================
- * GET ORDERS BY USER
- * =========================
- */
+// =========================
+// GET ORDERS BY USER
+// =========================
 router.get("/user/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
@@ -100,11 +118,9 @@ router.get("/user/:userId", async (req, res) => {
   }
 });
 
-/**
- * =========================
- * UPDATE ORDER STATUS
- * =========================
- */
+// =========================
+// UPDATE ORDER STATUS
+// =========================
 router.patch("/status/:id", async (req, res) => {
   try {
     const { status } = req.body;
@@ -118,7 +134,6 @@ router.patch("/status/:id", async (req, res) => {
 
     if (!updatedOrder) return res.status(404).json({ error: "Order not found" });
 
-    // Emit live update via Socket.IO if available
     if (req.io) req.io.emit("orderUpdated", updatedOrder);
 
     res.status(200).json(updatedOrder);
