@@ -56,7 +56,8 @@ router.post("/admin/send/:chatId", async (req, res) => {
 });
 
 // End chat (admin)
-router.post("/:chatId/end", async (req, res) => {
+// End chat using /close as frontend expects
+router.post("/:chatId/close", async (req, res) => {
   try {
     const { chatId } = req.params;
     const chat = await Chat.findById(chatId);
@@ -65,11 +66,12 @@ router.post("/:chatId/end", async (req, res) => {
     chat.isClosed = true;
     await chat.save();
 
-    res.json({ message: "Chat ended" });
+    res.status(200).json({ message: "Chat has been closed", isClosed: chat.isClosed });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
+
 
 // Continue chat (user)
 router.post("/:chatId/continue", async (req, res) => {
