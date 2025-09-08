@@ -15,7 +15,7 @@ import http from "http";
 import { Server } from "socket.io";
 import fetch from "node-fetch";
 
-// --- Load env vars ---
+// --- Load environment variables ---
 dotenv.config();
 
 // --- Fix __dirname for ES Modules ---
@@ -42,7 +42,7 @@ import chatRoutes from "./Routes/chatRoutes.js";
 // --- Import Chat model ---
 import Chat from "./Models/Chat.js";
 
-// --- App Config ---
+// --- App setup ---
 const app = express();
 const PORT = process.env.PORT || 5000;
 const MONGO_URI = process.env.MONGO_URI;
@@ -52,7 +52,7 @@ if (!MONGO_URI) {
   process.exit(1);
 }
 
-// --- Allowed origins ---
+// --- Allowed origins for CORS ---
 const allowedOrigins = [
   "http://localhost:3000",
   "https://utsav-aura.vercel.app",
@@ -60,24 +60,24 @@ const allowedOrigins = [
 
 // --- Middleware ---
 app.use(helmet());
-app.use(cors({
-  origin: function(origin, callback){
-    if(!origin) return callback(null, true); // allow non-browser requests
-    if(allowedOrigins.indexOf(origin) === -1){
-      return callback(new Error('Not allowed by CORS'));
-    }
-    return callback(null, true);
-  },
-  methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
-  credentials: true
-}));
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true); // allow non-browser requests
+      if (!allowedOrigins.includes(origin)) return callback(new Error("Not allowed by CORS"));
+      return callback(null, true);
+    },
+    methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
+    credentials: true,
+  })
+);
 app.use(morgan("dev"));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use("/uploads", express.static(uploadDir));
 
-// --- Routes ---
+// --- API Routes ---
 app.use("/auth", authRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/products", productRoutes);
@@ -96,7 +96,6 @@ app.get("/ping", (_, res) => res.send("PONG 🏓"));
 
 // --- YouTube API routes ---
 const youtubeRouter = express.Router();
-
 youtubeRouter.get("/youtube-stats", async (req, res) => {
   try {
     const { YT_API_KEY, YT_CHANNEL_ID } = process.env;
@@ -105,7 +104,7 @@ youtubeRouter.get("/youtube-stats", async (req, res) => {
     );
     if (!response.ok) return res.status(response.status).json({ error: "YouTube API error" });
     const data = await response.json();
-    res.json(data.items[0].statistics);
+    res.json(data.items[0]?.statistics || {});
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch YouTube stats" });
@@ -119,11 +118,9 @@ youtubeRouter.get("/youtube-live-chat-id", async (req, res) => {
       `https://www.googleapis.com/youtube/v3/videos?part=liveStreamingDetails&id=${YT_VIDEO_ID}&key=${YT_API_KEY}`
     );
     if (!response.ok) return res.status(response.status).json({ error: "YouTube API error" });
-
     const data = await response.json();
     const liveChatId = data.items[0]?.liveStreamingDetails?.activeLiveChatId;
     if (!liveChatId) return res.status(404).json({ error: "Live chat not found" });
-
     res.json({ liveChatId });
   } catch (err) {
     console.error(err);
@@ -132,22 +129,24 @@ youtubeRouter.get("/youtube-live-chat-id", async (req, res) => {
 });
 app.use("/api/misc", youtubeRouter);
 
-// --- Admin Chat APIs ---
-app.get("/api/admin/chats", async (req, res) => {
+// --- Admin chat APIs ---
+app.get("/api/admin/chats", async (_, res) => {
   try {
     const chats = await Chat.find().sort({ updatedAt: -1 });
     res.json(chats);
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: "Error fetching chats" });
   }
 });
 
 app.get("/api/admin/chats/:chatId", async (req, res) => {
   try {
-    const chat = await Chat.findOne({ chatId: req.params.chatId });
+    const chat = await Chat.findById(req.params.chatId);
     if (!chat) return res.status(404).json({ error: "Chat not found" });
     res.json(chat);
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: "Error fetching chat" });
   }
 });
@@ -163,7 +162,6 @@ app.use((err, req, res, next) => {
 
 // --- HTTP Server + Socket.IO ---
 const server = http.createServer(app);
-
 export const io = new Server(server, {
   cors: {
     origin: allowedOrigins,
@@ -172,60 +170,43 @@ export const io = new Server(server, {
   },
 });
 
-// --- Socket.IO chat logic ---
+// --- Socket.IO events ---
 io.on("connection", (socket) => {
-  console.log("✅ Socket connected:", socket.id);
+  console.log("New socket connected:", socket.id);
 
-  // Join a chat room
-  socket.on("joinChat", (chatId) => {
-    socket.join(chatId);
-    console.log(`Socket ${socket.id} joined chat ${chatId}`);
+  socket.on("joinRoom", (roomId) => {
+    socket.join(roomId);
+    console.log(`Socket joined room ${roomId}`);
   });
 
-  // Send message
-  socket.on("sendMessage", async ({ chatId, senderType, senderName, text }) => {
-    if (!chatId || !text) return;
-
-    const newMessage = {
-      senderType,
-      senderName,
-      text,
-      createdAt: new Date(),
-    };
-
-    try {
-      let chat = await Chat.findOne({ chatId });
-      if (!chat) {
-        chat = new Chat({ chatId, name: senderName, messages: [] });
-      }
-
-      chat.messages.push(newMessage);
-      chat.updatedAt = new Date();
-      await chat.save();
-
-      // Emit message to room
-      io.to(chatId).emit("receiveMessage", newMessage);
-    } catch (err) {
-      console.error("Failed to save/send message:", err);
-    }
+  socket.on("sendMessage", ({ roomId, message }) => {
+    io.to(roomId).emit("receiveMessage", message);
   });
 
+  socket.on("messageSeen", ({ roomId, messageId }) => {
+    io.to(roomId).emit("updateStatus", { messageId, status: "read" });
+  });
+  socket.on("endChat", (chatId) => {
+    io.to(chatId).emit("chatEnded");
+  });
+
+  socket.on("continueChat", (chatId) => {
+    io.to(chatId).emit("chatContinued");
+  });
   socket.on("disconnect", () => {
-    console.log("❌ Socket disconnected:", socket.id);
+    console.log("Socket disconnected:", socket.id);
   });
 });
 
 // --- Utility: broadcast order updates ---
 export const emitOrderUpdate = (order) => io.emit("orderUpdated", order);
 
-// --- Start server after DB connects ---
+// --- Connect to MongoDB and start server ---
 mongoose
   .connect(MONGO_URI)
   .then(() => {
     console.log("MongoDB connected ✅");
-    server.listen(PORT, () =>
-      console.log(`🚀 Server running on http://localhost:${PORT}`)
-    );
+    server.listen(PORT, () => console.log(`🚀 Server running on http://localhost:${PORT}`));
   })
   .catch((err) => {
     console.error("❌ MongoDB connection failed", err);

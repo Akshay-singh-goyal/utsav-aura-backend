@@ -1,66 +1,90 @@
 import express from "express";
-import Chat from "../Models/Chat.js";
-import { verifyToken } from "../Middlewares/Auth.js";
+import Chat from "../models/Chat.js";
+import User from "../models/User.js";
 
 const router = express.Router();
 
-// Get logged-in user's chat
-router.get("/me", verifyToken, async (req, res) => {
+// Get current user's chat
+router.get("/me", async (req, res) => {
   try {
-    let chat = await Chat.findOne({ user: req.user._id }).populate("user", "name email");
+    const userId = req.user._id; // assume authentication middleware
+    let chat = await Chat.findOne({ user: userId }).populate("user", "name email");
     if (!chat) {
-      chat = await Chat.create({ user: req.user._id, messages: [] });
+      chat = await Chat.create({ user: userId, messages: [] });
     }
     res.json(chat);
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({ message: err.message });
   }
 });
 
-// Add message to chat
-router.post("/send", verifyToken, async (req, res) => {
+// Send message
+router.post("/send", async (req, res) => {
   try {
     const { text } = req.body;
-    let chat = await Chat.findOne({ user: req.user._id });
+    const userId = req.user._id;
+    let chat = await Chat.findOne({ user: userId });
+    if (!chat) return res.status(404).json({ message: "Chat not found" });
+    if (chat.isClosed) return res.status(400).json({ message: "Chat is closed" });
 
-    if (!chat) {
-      chat = await Chat.create({
-        user: req.user._id,
-        messages: [{ sender: "user", text }]
-      });
-    } else {
-      chat.messages.push({ sender: "user", text });
-      await chat.save();
-    }
+    const msg = { sender: "user", text };
+    chat.messages.push(msg);
+    await chat.save();
 
     res.json(chat);
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({ message: err.message });
   }
 });
 
-// Get all chats (Admin only)
-router.get("/all", verifyToken, async (req, res) => {
-  if (req.user.role !== "admin") {
-    return res.status(403).json({ success: false, message: "Access denied" });
+// Admin send message
+router.post("/admin/send/:chatId", async (req, res) => {
+  try {
+    const { text } = req.body;
+    const { chatId } = req.params;
+    let chat = await Chat.findById(chatId);
+    if (!chat) return res.status(404).json({ message: "Chat not found" });
+
+    const msg = { sender: "admin", text };
+    chat.messages.push(msg);
+    await chat.save();
+
+    res.json(chat);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
   }
-  const chats = await Chat.find().populate("user", "name email");
-  res.json(chats);
 });
 
-// Admin send message to a specific user
-router.post("/admin/:chatId", verifyToken, async (req, res) => {
-  if (req.user.role !== "admin") {
-    return res.status(403).json({ success: false, message: "Access denied" });
-  }
-  const { text } = req.body;
-  const chat = await Chat.findById(req.params.chatId);
-  if (!chat) return res.status(404).json({ success: false, message: "Chat not found" });
+// End chat (admin)
+router.post("/:chatId/end", async (req, res) => {
+  try {
+    const { chatId } = req.params;
+    const chat = await Chat.findById(chatId);
+    if (!chat) return res.status(404).json({ message: "Chat not found" });
 
-  chat.messages.push({ sender: "admin", text });
-  await chat.save();
-  res.json(chat);
+    chat.isClosed = true;
+    await chat.save();
+
+    res.json({ message: "Chat ended" });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
 });
 
+// Continue chat (user)
+router.post("/:chatId/continue", async (req, res) => {
+  try {
+    const { chatId } = req.params;
+    const chat = await Chat.findById(chatId);
+    if (!chat) return res.status(404).json({ message: "Chat not found" });
+
+    chat.isClosed = false;
+    await chat.save();
+
+    res.json({ message: "Chat continued" });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
 
 export default router;
