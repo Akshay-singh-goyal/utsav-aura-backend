@@ -39,6 +39,7 @@ import queryRoutes from "./Routes/queryRoutes.js";
 import profileRoutes from "./Routes/profileRoutes.js";
 import chatRoutes from "./Routes/chatRoutes.js";
 
+
 // --- Import Chat model ---
 import Chat from "./Models/Chat.js";
 
@@ -88,7 +89,7 @@ app.use("/api/admin/category", categoryRoute);
 app.use("/api/packages", packageRoutes);
 app.use("/api/queries", queryRoutes);
 app.use("/api/profile", profileRoutes);
-app.use("/api/chat", chatRoutes);
+app.use("/api/chat", chatRoutes);  
 
 // --- Health check ---
 app.get("/", (_, res) => res.json({ message: "Server running ✅" }));
