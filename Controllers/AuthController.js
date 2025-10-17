@@ -1,25 +1,29 @@
-// src/Controllers/authController.js
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import nodemailer from "nodemailer";
 import User from "../Models/User.js";
 
+// Set your admin secret key
+const ADMIN_SECRET = process.env.ADMIN_SECRET || "SKART@123";
+
 // --- Signup Controller ---
 export const signup = async (req, res) => {
   try {
     const { name, email, password, role, adminKey } = req.body;
 
-    if (!name || !email || !password || !role)
+    if (!name || !email || !password || !role) {
       return res.status(400).json({ success: false, message: "All fields are required" });
+    }
 
-    if (role === "admin" && adminKey !== (process.env.ADMIN_SECRET || "SKART@123")) {
+    if (role === "admin" && adminKey !== ADMIN_SECRET) {
       return res.status(403).json({ success: false, message: "Invalid admin secret key" });
     }
 
     const existingUser = await User.findOne({ email });
-    if (existingUser)
+    if (existingUser) {
       return res.status(409).json({ success: false, message: "User already exists" });
+    }
 
     const hashedPassword = await bcrypt.hash(password, 10);
     const user = new User({ name, email, password: hashedPassword, role });
@@ -40,8 +44,10 @@ export const signup = async (req, res) => {
 export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
-    if (!email || !password)
+
+    if (!email || !password) {
       return res.status(400).json({ success: false, message: "Email and password are required" });
+    }
 
     const user = await User.findOne({ email });
     if (!user) return res.status(403).json({ success: false, message: "Invalid credentials" });
@@ -76,11 +82,13 @@ export const forgotPassword = async (req, res) => {
     const user = await User.findOne({ email });
     if (!user) return res.status(404).json({ success: false, message: "User not found" });
 
+    // Generate reset token
     const resetToken = crypto.randomBytes(20).toString("hex");
     user.resetPasswordToken = crypto.createHash("sha256").update(resetToken).digest("hex");
-    user.resetPasswordExpire = Date.now() + 15 * 60 * 1000; // 15 min
+    user.resetPasswordExpire = Date.now() + 15 * 60 * 1000; // 15 minutes
     await user.save();
 
+    // Send email
     const resetUrl = `${process.env.CLIENT_URL}/reset-password/${resetToken}`;
     const transporter = nodemailer.createTransport({
       service: "gmail",
@@ -91,7 +99,7 @@ export const forgotPassword = async (req, res) => {
       from: process.env.EMAIL_USER,
       to: user.email,
       subject: "Password Reset Request",
-      text: `You requested a password reset. Click here: ${resetUrl}`,
+      text: `You requested a password reset. Click here to reset: ${resetUrl}`,
     };
 
     await transporter.sendMail(mailOptions);
@@ -114,7 +122,7 @@ export const resetPassword = async (req, res) => {
     if (!user) return res.status(400).json({ success: false, message: "Invalid or expired token" });
     if (!req.body.password) return res.status(400).json({ success: false, message: "Password is required" });
 
-    user.password = req.body.password; // hashed in pre-save hook
+    user.password = req.body.password; // will be hashed in pre-save hook
     user.resetPasswordToken = undefined;
     user.resetPasswordExpire = undefined;
     await user.save();
@@ -122,6 +130,28 @@ export const resetPassword = async (req, res) => {
     res.json({ success: true, message: "Password reset successfully" });
   } catch (err) {
     console.error("Reset Password Error:", err.message);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+// --- Get logged-in user Controller ---
+export const me = async (req, res) => {
+  try {
+    if (!req.user) return res.status(401).json({ success: false, message: "Unauthorized" });
+    res.json({ success: true, user: req.user });
+  } catch (err) {
+    console.error("Me Error:", err.message);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+// --- Admin: Get all users Controller ---
+export const getUsers = async (req, res) => {
+  try {
+    const users = await User.find({}, "-password");
+    res.json({ success: true, users });
+  } catch (err) {
+    console.error("Get Users Error:", err.message);
     res.status(500).json({ success: false, message: "Internal server error" });
   }
 };
