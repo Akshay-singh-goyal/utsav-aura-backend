@@ -1,7 +1,7 @@
 const User = require("../models/User");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const sendOtp = require("../utils/sendOtp");
+const sendOtp = require("../utils/sendotp");
 
 // TEMP OTP STORE
 let otpStore = {};
